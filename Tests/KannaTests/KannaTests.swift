@@ -23,10 +23,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import XCTest
+import Foundation
+import CoreFoundation
 @testable import Kanna
 
 class KannaTests: XCTestCase {
-    let css2xpath: [(css: String, xpath: String?)] = [
+    let css2xpath: [(css: String, xpath: String)] = [
         ("*, div", "//* | //div"),
         (".myclass", "//*[contains(concat(' ', normalize-space(@class), ' '), ' myclass ')]"),
         ("#myid", "//*[@id = 'myid']"),
@@ -38,11 +40,23 @@ class KannaTests: XCTestCase {
         ("div + span", "//div/following-sibling::*[1]/self::span"),
         ("div[attr]", "//div[@attr]"),
         ("div[attr='val']", "//div[@attr = 'val']"),
+        ("div[attr=\"val\"]", "//div[@attr = 'val']"),
         ("div[attr~='val']", "//div[contains(concat(' ', @attr, ' '),concat(' ', 'val', ' '))]"),
+        ("div[attr~=\"val\"]", "//div[contains(concat(' ', @attr, ' '),concat(' ', 'val', ' '))]"),
         ("div[attr|='val']", "//div[@attr = 'val' or starts-with(@attr,concat('val', '-'))]"),
+        ("div[attr|=\"val\"]", "//div[@attr = 'val' or starts-with(@attr,concat('val', '-'))]"),
         ("div[attr*='val']", "//div[contains(@attr, 'val')]"),
+        ("div[attr*=\"val\"]", "//div[contains(@attr, 'val')]"),
         ("div[attr^='val']", "//div[starts-with(@attr, 'val')]"),
+        ("div[attr^=\"val\"]", "//div[starts-with(@attr, 'val')]"),
         ("div[attr$='val']", "//div[substring(@attr, string-length(@attr) - string-length('val') + 1, string-length('val')) = 'val']"),
+        ("div[attr$=\"val\"]", "//div[substring(@attr, string-length(@attr) - string-length('val') + 1, string-length('val')) = 'val']"),
+        ("img[src=jpg]", "//img[@src = 'jpg']"),
+        ("img[src~=jpg]", "//img[contains(concat(' ', @src, ' '),concat(' ', 'jpg', ' '))]"),
+        ("img[src|=jpg]", "//img[@src = 'jpg' or starts-with(@src,concat('jpg', '-'))]"),
+        ("img[src*=jpg]", "//img[contains(@src, 'jpg')]"),
+        ("img[src^=jpg]", "//img[starts-with(@src, 'jpg')]"),
+        ("img[src$=jpg]", "//img[substring(@src, string-length(@src) - string-length('jpg') + 1, string-length('jpg')) = 'jpg']"),
         ("div:first-child", "//div[count(preceding-sibling::*) = 0]"),
         ("div:last-child", "//div[count(following-sibling::*) = 0]"),
         ("div:only-child", "//div[count(preceding-sibling::*) = 0 and count(following-sibling::*) = 0]"),
@@ -59,7 +73,9 @@ class KannaTests: XCTestCase {
         ("div:nth-of-type(odd)", "//div[(position() >= 1) and (((position()-1) mod 2) = 0)]"),
         ("*:root", "//*[not(parent::*)]"),
         ("div:contains('foo')", "//div[contains(., 'foo')]"),
+        ("div:contains(\"foo\")", "//div[contains(., 'foo')]"),
         ("div:not([type='text'])", "//div[not(@type = 'text')]"),
+        ("div:not([type=\"text\"])", "//div[not(@type = 'text')]"),
         ("*:not(div)", "//*[not(self::div)]"),
         ("#content > p:not(.article-meta)", "//*[@id = 'content']/p[not(contains(concat(' ', normalize-space(@class), ' '), ' article-meta '))]"),
         ("div:not(:nth-child(-n+2))", "//div[not((count(preceding-sibling::*) + 1) <= 2)]"),
@@ -82,19 +98,25 @@ class KannaTests: XCTestCase {
     */
     func testCSStoXPath() {
         for testCase in css2xpath {
-            let xpath = CSS.toXPath(testCase.css)
-            XCTAssert(xpath == testCase.xpath, "Create XPath = [\(xpath)] != [\(testCase.xpath)]")
+            do {
+                let xpath = try CSS.toXPath(testCase.css)
+                XCTAssert(xpath == testCase.xpath, "Create XPath = [\(xpath)] != [\(testCase.xpath)]")
+            } catch {
+                XCTAssert(false, error.localizedDescription)
+            }
         }
     }
-    
+
     /**
     test XML
     */
     func testXml() {
         let filename = "test_XML_ExcelWorkbook"
-        if let path = NSBundle(forClass:self.classForCoder).pathForResource(filename, ofType:"xml"),
-            xml = NSData(contentsOfFile: path),
-            doc = XML(xml: xml, encoding: NSUTF8StringEncoding) {
+        guard let path = Bundle(for:KannaTests.self).path(forResource: filename, ofType:"xml") else {
+            return
+        }
+        if let xml = try? Data(contentsOf: URL(fileURLWithPath: path)),
+            let doc = try? XML(xml: xml, encoding: .utf8) {
                 let namespaces = [
                     "o":  "urn:schemas-microsoft-com:office:office",
                     "ss": "urn:schemas-microsoft-com:office:spreadsheet"
@@ -115,7 +137,7 @@ class KannaTests: XCTestCase {
                 
                 for row in doc.xpath("//ss:Row", namespaces: namespaces) {
                     for cell in row.xpath("//ss:Data", namespaces: namespaces) {
-                        print(cell.text)
+                        print(cell.text!)
                     }
                 }
         } else {
@@ -129,7 +151,7 @@ class KannaTests: XCTestCase {
         let modifyNextXML = "<all_item><item><title>item1</title></item><item><title>item0</title></item></all_item>"
 
         do {
-            guard let doc = XML(xml: xml, encoding: NSUTF8StringEncoding) else {
+            guard let doc = try? XML(xml: xml, encoding: .utf8) else {
                     return
             }
             let item0 = doc.css("item")[0]
@@ -139,7 +161,7 @@ class KannaTests: XCTestCase {
         }
 
         do {
-            guard let doc = XML(xml: xml, encoding: NSUTF8StringEncoding) else {
+            guard let doc = try? XML(xml: xml, encoding: .utf8) else {
                 return
             }
             let item0 = doc.css("item")[0]
@@ -148,6 +170,10 @@ class KannaTests: XCTestCase {
             XCTAssert(doc.at_css("all_item")!.toXML == modifyNextXML)
         }
     }
+
+    func testXmlThrows() {
+        XCTAssertThrowsError(try XML(xml: "", encoding: .utf8))
+    }
     
     /**
     test HTML4
@@ -155,13 +181,13 @@ class KannaTests: XCTestCase {
     func testHTML4() {
         // This is an example of a functional test case.
         let filename = "test_HTML4"
-        guard let path = NSBundle(forClass:self.classForCoder).pathForResource(filename, ofType:"html") else {
+        guard let path = Bundle(for:KannaTests.self).path(forResource: filename, ofType:"html") else {
             return
         }
         
         do {
-            let html = try String(contentsOfFile: path, encoding: NSUTF8StringEncoding)
-            guard let doc = HTML(html: html, encoding: NSUTF8StringEncoding) else {
+            let html = try String(contentsOfFile: path, encoding: .utf8)
+            guard let doc = try? HTML(html: html, encoding: .utf8) else {
                 return
             }
             // Check title
@@ -169,33 +195,35 @@ class KannaTests: XCTestCase {
             XCTAssert(doc.head != nil)
             XCTAssert(doc.body != nil)
             XCTAssert(doc.toHTML!.hasPrefix("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\n<html lang=\"en\">"))
-            
+
+            XCTAssert(doc.xpath("//link").count == 2)
+
             for link in doc.xpath("//link") {
                 XCTAssert(link["href"] != nil)
             }
             
             let repoName = ["Kanna", "Swift-HTML-Parser"]
-            for (index, repo) in doc.xpath("//span[@class='repo']").enumerate() {
+            for (index, repo) in doc.xpath("//span[@class='repo']").enumerated() {
                 XCTAssert(repo["title"] == repoName[index])
                 XCTAssert(repo.text == repoName[index])
             }
             
             if let snTable = doc.at_css("table[id='sequence number']") {
                 let alphabet = ["a", "b", "c"]
-                for (indexTr, tr) in snTable.css("tr").enumerate() {
-                    for (indexTd, td) in tr.css("td").enumerate() {
+                for (indexTr, tr) in snTable.css("tr").enumerated() {
+                    for (indexTd, td) in tr.css("td").enumerated() {
                         XCTAssert(td.text == "\(alphabet[indexTd])\(indexTr)")
                     }
                 }
             }
             
             if let starTable = doc.at_css("table[id='star table']"),
-                   allStarStr = starTable.at_css("tfoot > tr > td:nth-child(2)")?.text,
-                   allStar = Int(allStarStr) {
+                   let allStarStr = starTable.at_css("tfoot > tr > td:nth-child(2)")?.text,
+                   let allStar = Int(allStarStr) {
                     var count = 0
                     for starNode in starTable.css("tbody > tr > td:nth-child(2)") {
                         if let starStr = starNode.text,
-                               star    = Int(starStr) {
+                               let star    = Int(starStr) {
                             count += star
                         }
                     }
@@ -222,13 +250,13 @@ class KannaTests: XCTestCase {
     
     func testInnerHTML() {
         let filename = "test_HTML4"
-        guard let path = NSBundle(forClass:self.classForCoder).pathForResource(filename, ofType:"html") else {
+        guard let path = Bundle(for:KannaTests.self).path(forResource: filename, ofType:"html") else {
             return
         }
         
         do {
-            let html = try String(contentsOfFile: path, encoding: NSUTF8StringEncoding)
-            guard let doc = HTML(html: html, encoding: NSUTF8StringEncoding) else {
+            let html = try String(contentsOfFile: path, encoding: .utf8)
+            guard let doc = try? HTML(html: html, encoding: .utf8) else {
                 return
             }
             
@@ -240,8 +268,8 @@ class KannaTests: XCTestCase {
     }
     
     func testNSURL() {
-        guard let url = NSURL(string: "https://en.wikipedia.org/wiki/Cat"),
-              let _ = HTML(url: url, encoding: NSUTF8StringEncoding) else {
+        guard let url = URL(string: "https://en.wikipedia.org/wiki/Cat"),
+              let _ = try? HTML(url: url, encoding: .utf8) else {
             XCTAssert(false)
             return
         }
@@ -253,9 +281,9 @@ class KannaTests: XCTestCase {
         let modifyNextHTML = "<body>\n<div>A love triangle.</div>\n<h1>Three's Company</h1>\n</body>"
 
         do {
-            guard let doc = HTML(html: html, encoding: NSUTF8StringEncoding),
-                h1 = doc.at_css("h1"),
-                div = doc.at_css("div") else {
+            guard let doc = try? HTML(html: html, encoding: .utf8),
+                let h1 = doc.at_css("h1"),
+                let div = doc.at_css("div") else {
                     return
             }
             div.addPrevSibling(h1)
@@ -263,13 +291,72 @@ class KannaTests: XCTestCase {
         }
 
         do {
-            guard let doc = HTML(html: html, encoding: NSUTF8StringEncoding),
-                h1 = doc.at_css("h1"),
-                div = doc.at_css("div") else {
+            guard let doc = try? HTML(html: html, encoding: .utf8),
+                let h1 = doc.at_css("h1"),
+                let div = doc.at_css("div") else {
                     return
             }
             div.addNextSibling(h1)
             XCTAssert(doc.body!.toHTML == modifyNextHTML)
         }
+    }
+
+    func testNextPreviousSibling() {
+        let html = "<body><div>first</div><div>second</div><div>third</div></body>"
+        guard let doc = try? HTML(html: html, encoding: .utf8),
+            let node = doc.css("div:nth-child(2)").first else {
+            XCTFail()
+            return
+        }
+
+        guard let next = node.nextSibling else {
+            XCTFail("Next sibling not found")
+            return
+        }
+        XCTAssert(next.text == "third")
+
+        guard let previous = node.previousSibling else {
+            XCTFail("Previous sibling not found")
+            return
+        }
+        XCTAssert(previous.text == "first")
+    }
+
+    func testOutOfDocument() {
+        let filename = "test_HTML4"
+        guard let path = Bundle(for:KannaTests.self).path(forResource: filename, ofType:"html") else {
+            return
+        }
+
+        var elements: [Kanna.XMLElement] = []
+
+        do {
+            let html = try String(contentsOfFile: path, encoding: .utf8)
+            if let doc = try? HTML(html: html, encoding: .utf8) {
+                for node in doc.css("div#inner > div") {
+                    elements.append(node)
+                }
+            }
+        } catch {
+            XCTAssert(false, "File not found. name: (\(filename)), error: \(error)")
+        }
+
+        for element in elements {
+            XCTAssert(element.text! == "def")
+        }
+    }
+}
+
+extension KannaTests {
+    static var allTests: [(String, (KannaTests) -> () throws -> Void)] {
+        return [
+            ("testCSStoXPath", testCSStoXPath),
+            //("testXml", testXml),
+            ("testXML_MovingNode", testXML_MovingNode),
+            //("testHTML4", testHTML4),
+            //("testInnerHTML", testInnerHTML),
+            ("testNSURL", testNSURL),
+            ("testHTML_MovingNode", testHTML_MovingNode)
+        ]
     }
 }
